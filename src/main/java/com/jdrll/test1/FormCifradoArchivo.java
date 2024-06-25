@@ -1,126 +1,177 @@
 package com.jdrll.test1;
-import com.jdrll.test1.ransomewareBackend.Archivo;
-import com.jdrll.test1.ransomewareBackend.ArchivoBase;
-import com.jdrll.test1.ransomewareBackend.Cifrado;
+
+import javax.crypto.*;
+import javax.crypto.spec.SecretKeySpec;
 import javax.swing.*;
-import javax.swing.border.EmptyBorder;
 import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
-import java.io.File;
-import java.util.Date;
+import java.awt.event.*;
+import java.io.*;
+import java.nio.file.*;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
 
 public class FormCifradoArchivo extends JFrame {
-    private JTextField filePathField;
-    private JLabel statusLabel;
-    private ArchivoBase archivo;
-    private JButton cargarArchivoButton;
-    private JButton cifrarArchivoButton;
-    private JButton descifrarArchivoButton;
+
+    private JTextArea logArea;
 
     public FormCifradoArchivo() {
-        setTitle("Cargar y Cifrar/Descifrar Archivo");
-        setSize(800, 500);
-        setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+        setTitle("Cifrado y Descifrado de Archivos");
+        setSize(500, 300);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
 
-        filePathField = new JTextField(20);
-        statusLabel = new JLabel("Estado: ");
-        cargarArchivoButton = new JButton("Cargar Archivo");
-        cifrarArchivoButton = new JButton("Cifrar Archivo");
-        descifrarArchivoButton = new JButton("Descifrar Archivo");
+        JPanel panel = new JPanel();
+        panel.setLayout(new BorderLayout());
 
-        JPanel panelArchivo = new JPanel();
-        panelArchivo.setLayout(new GridLayout(6, 1));
+        logArea = new JTextArea();
+        logArea.setEditable(false);
+        JScrollPane scrollPane = new JScrollPane(logArea);
+        panel.add(scrollPane, BorderLayout.CENTER);
 
-        // Añadir un borde con espacio alrededor del panel
-        panelArchivo.setBorder(new EmptyBorder(10, 10, 10, 10)); // 10 píxeles de margen en todos los lados
+        JButton encryptButton = new JButton("Cifrar");
+        JButton decryptButton = new JButton("Descifrar");
 
-        panelArchivo.add(new JLabel("Ruta del Archivo: "));
-        panelArchivo.add(filePathField);
-        panelArchivo.add(cargarArchivoButton);
-        panelArchivo.add(cifrarArchivoButton);
-        panelArchivo.add(descifrarArchivoButton);
-        panelArchivo.add(statusLabel);
+        JPanel buttonPanel = new JPanel();
+        buttonPanel.setLayout(new FlowLayout());
+        buttonPanel.add(encryptButton);
+        buttonPanel.add(decryptButton);
+        panel.add(buttonPanel, BorderLayout.SOUTH);
 
-        cifrarArchivoButton.setVisible(false);
-        descifrarArchivoButton.setVisible(false);
-
-        cargarArchivoButton.addActionListener(new ActionListener() {
+        encryptButton.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
                 JFileChooser fileChooser = new JFileChooser();
-                int result = fileChooser.showOpenDialog(null);
+                int result = fileChooser.showOpenDialog(FormCifradoArchivo.this);
                 if (result == JFileChooser.APPROVE_OPTION) {
                     File selectedFile = fileChooser.getSelectedFile();
-                    filePathField.setText(selectedFile.getAbsolutePath());
+                    logArea.append("Archivo seleccionado: " + selectedFile.getAbsolutePath() + "\n");
+
+                    // Generar clave AES automáticamente
                     try {
-                        // Crear una instancia de Archivo con los nuevos atributos
-                        String fileId = "123456"; // Puedes generar un fileId único aquí
-                        String fileName = selectedFile.getName();
-                        Date encryptionDate = new Date(); // Fecha actual de cifrado
-                        archivo = new Archivo(selectedFile, new Cifrado(), fileId, fileName, encryptionDate);
-                        statusLabel.setText("Estado: Archivo cargado con éxito.");
-                        cifrarArchivoButton.setVisible(true);
-                    } catch (Exception ex) {
-                        ex.printStackTrace();
-                        statusLabel.setText("Estado: Error al cargar el archivo.");
+                        SecretKey secretKey = generateAESKey();
+                        File keyFile = new File("key.key");
+                        saveKey(secretKey, keyFile);
+
+                        // Cifrar el archivo seleccionado
+                        File encryptedFile = new File(selectedFile.getParentFile(), "archivo_cifrado.txt");
+                        Cifrado.encrypt(selectedFile, encryptedFile);
+                        logArea.append("Archivo cifrado exitosamente: " + encryptedFile.getAbsolutePath() + "\n");
+
+                    } catch (Cifrado.CryptoException | IOException ex) {
+                        logArea.append("Error durante el cifrado: " + ex.getMessage() + "\n");
                     }
                 }
             }
         });
 
-        cifrarArchivoButton.addActionListener(new ActionListener() {
+        decryptButton.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
-                try {
-                    // Asegurarse de que 'archivo' sea de tipo Archivo
-                    if (archivo instanceof Archivo) {
-                        Archivo archivoCasteado = (Archivo) archivo;
-                        File archivoCifrado = new File(archivoCasteado.getArchivo().getAbsolutePath() + ".enc");
-                        archivoCasteado.getCifrado().cifrarArchivo(archivoCasteado, archivoCifrado);
-                        statusLabel.setText("Estado: Archivo cifrado con éxito.");
-                        // Mostrar botones después de cifrar
-                        descifrarArchivoButton.setVisible(true);
-                    } else {
-                        statusLabel.setText("Estado: No se puede cifrar un archivo base.");
+                JFileChooser fileChooser = new JFileChooser();
+                int result = fileChooser.showOpenDialog(FormCifradoArchivo.this);
+                if (result == JFileChooser.APPROVE_OPTION) {
+                    File selectedFile = fileChooser.getSelectedFile();
+                    logArea.append("Archivo seleccionado: " + selectedFile.getAbsolutePath() + "\n");
+
+                    // Descifrar el archivo seleccionado
+                    try {
+                        File decryptedFile = new File(selectedFile.getParentFile(), "archivo_descifrado.txt");
+                        Cifrado.decrypt(selectedFile, decryptedFile);
+                        logArea.append("Archivo descifrado exitosamente: " + decryptedFile.getAbsolutePath() + "\n");
+
+                    } catch (Cifrado.CryptoException ex) {
+                        logArea.append("Error durante el descifrado: " + ex.getMessage() + "\n");
                     }
-                } catch (Exception ex) {
-                    ex.printStackTrace();
-                    statusLabel.setText("Estado: Error al cifrar el archivo.");
                 }
             }
         });
 
-        descifrarArchivoButton.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                try {
-                    if (archivo instanceof Archivo) {
-                        Archivo archivoCasteado = (Archivo) archivo;
-                        File archivoDescifrado = new File(archivoCasteado.getArchivo().getAbsolutePath()+ ".dec");
-                        archivoCasteado.getCifrado().descifrarArchivo(archivoCasteado, archivoDescifrado);
-                        statusLabel.setText("Estado: Archivo descifrado con éxito.");
-                        // Mostrar botón para descargar archivo descifrado
-                    } else {
-                        statusLabel.setText("Estado: No se puede descifrar un archivo base.");
-                    }
-                } catch (Exception ex) {
-                    ex.printStackTrace();
-                    statusLabel.setText("Estado: Error al descifrar el archivo.");
-                }
-            }
-        });
+        add(panel);
+        setVisible(true);
+    }
 
-        setContentPane(panelArchivo);
+    private SecretKey generateAESKey() throws Cifrado.CryptoException {
+        try {
+            KeyGenerator keyGenerator = KeyGenerator.getInstance("AES");
+            keyGenerator.init(128); // Tamaño de clave AES 128 bits
+            return keyGenerator.generateKey();
+        } catch (NoSuchAlgorithmException ex) {
+            throw new Cifrado.CryptoException("Error generando la clave AES: Algoritmo no encontrado", ex);
+        }
+    }
+
+    private void saveKey(SecretKey key, File keyFile) throws IOException {
+        byte[] encodedKey = key.getEncoded();
+        Files.write(keyFile.toPath(), encodedKey);
     }
 
     public static void main(String[] args) {
         SwingUtilities.invokeLater(new Runnable() {
-            @Override
             public void run() {
-                new FormCifradoArchivo().setVisible(true);
+                new FormCifradoArchivo();
             }
         });
+    }
+}
+
+class Cifrado {
+    private static final String ALGORITHM = "AES";
+    private static final String TRANSFORMATION = "AES";
+
+    public static void encrypt(File inputFile, File outputFile) throws CryptoException {
+        try {
+            SecretKey secretKey = loadKey(new File("key.key"));
+
+            Cipher cipher = Cipher.getInstance(TRANSFORMATION);
+            cipher.init(Cipher.ENCRYPT_MODE, secretKey);
+
+            try (FileInputStream inputStream = new FileInputStream(inputFile);
+                 FileOutputStream outputStream = new FileOutputStream(outputFile)) {
+
+                byte[] inputBytes = new byte[(int) inputFile.length()];
+                inputStream.read(inputBytes);
+
+                byte[] outputBytes = cipher.doFinal(inputBytes);
+
+                outputStream.write(outputBytes);
+            }
+
+        } catch (NoSuchPaddingException | NoSuchAlgorithmException | InvalidKeyException | BadPaddingException | IllegalBlockSizeException | IOException ex) {
+            throw new CryptoException("Error encrypting file", ex);
+        }
+    }
+
+    public static void decrypt(File inputFile, File outputFile) throws CryptoException {
+        try {
+            SecretKey secretKey = loadKey(new File("key.key"));
+
+            Cipher cipher = Cipher.getInstance(TRANSFORMATION);
+            cipher.init(Cipher.DECRYPT_MODE, secretKey);
+
+            try (FileInputStream inputStream = new FileInputStream(inputFile);
+                 FileOutputStream outputStream = new FileOutputStream(outputFile)) {
+
+                byte[] inputBytes = new byte[(int) inputFile.length()];
+                inputStream.read(inputBytes);
+
+                byte[] outputBytes = cipher.doFinal(inputBytes);
+
+                outputStream.write(outputBytes);
+            }
+
+        } catch (NoSuchPaddingException | NoSuchAlgorithmException | InvalidKeyException | BadPaddingException | IllegalBlockSizeException | IOException ex) {
+            throw new CryptoException("Error decrypting file", ex);
+        }
+    }
+
+    private static SecretKey loadKey(File keyFile) throws IOException {
+        byte[] encodedKey = Files.readAllBytes(Paths.get(keyFile.getAbsolutePath()));
+        return new SecretKeySpec(encodedKey, ALGORITHM);
+    }
+
+    public static class CryptoException extends Exception {
+        public CryptoException(String message, Throwable throwable) {
+            super(message, throwable);
+        }
     }
 }

